@@ -18,7 +18,7 @@ object Matching {
 
   def main(args: Array[String]): Unit =
   {
-    // »ù±¾¼ÙÉè:GPS¹ì¼£µãÒÔÊ±¼äË³ĞòÁ÷³ö
+    // åŸºæœ¬å‡è®¾:GPSè½¨è¿¹ç‚¹ä»¥æ—¶é—´é¡ºåºæµå‡º
 
     if(args.length != 7)
     {
@@ -32,47 +32,38 @@ object Matching {
 
     val conf = new SparkConf().setAppName("MM on Stream").setMaster(sparkMaster).set("spark.driver.allowMultipleContexts","true")
 
-    // Éú³ÉÔ­ÉúÊ÷²¢¹ã²¥
+    // ç”ŸæˆåŸç”Ÿæ ‘å¹¶å¹¿æ’­
     val sc = new SparkContext(conf)
 
-    val roads = sc.textFile(roadNet).collect() // ¶ÁÈ¡Â·ÍøÎÄ¼ş²¢ĞÎ³ÉÕæÊµRDD
+    val roads = sc.textFile(roadNet).collect() // è¯»å–è·¯ç½‘æ–‡ä»¶å¹¶å½¢æˆçœŸå®RDD
 
-    val tree = rtree.GetSparkTree.getTree(roads) //Éú³ÉÔ­ÉúÊ÷
+    val tree = rtree.GetSparkTree.getTree(roads) //ç”ŸæˆåŸç”Ÿæ ‘
 
-    //val broadcast = sc.broadcast(tree) // ¹ã²¥Ô­ÉúÊ÷
+    //val broadcast = sc.broadcast(tree) // å¹¿æ’­åŸç”Ÿæ ‘
 
-    /////´´½¨ÈªÑÛ
-    val ssc = new StreamingContext(conf,Seconds(2)) // ´´½¨Ë®Õ¢,´°¿ÚÆÚÎª2s
+    /////åˆ›å»ºæ³‰çœ¼
+    val ssc = new StreamingContext(conf,Seconds(2)) // åˆ›å»ºæ°´é—¸,çª—å£æœŸä¸º2s
 
-    ssc.checkpoint(checkpoint)  // ´´½¨¼ì²éµã£¬²»È»updateStateByKeyµÄÀúÊ·×´Ì¬´æ´¢ÔÚÄÄÄØ£¿
+    ssc.checkpoint(checkpoint)  // åˆ›å»ºæ£€æŸ¥ç‚¹ï¼Œä¸ç„¶updateStateByKeyçš„å†å²çŠ¶æ€å­˜å‚¨åœ¨å“ªå‘¢ï¼Ÿ
 
-    val kafkaParams = Map[String,Object](
-      "bootstrap.servers" -> "localhost:9092",
-      "key.deserializer" -> classOf[StringDeserializer],
-      "value.deserializer" -> classOf[StringDeserializer],
-      "auto.offset.reset" -> "latest",
-      "enable.auto.commit" -> (false: java.lang.Boolean),
-      "group.id" -> 1
-    )
+    val pointStream = ssc.socketTextStream(host,port.toInt) //pointStreamæ˜¯æ³‰çœ¼,æŒ‡å®šäº†ç›‘å¬çš„hostå’Œç«¯å£
 
-    val pointStream = ssc.socketTextStream(host,port.toInt) //pointStreamÊÇÈªÑÛ,Ö¸¶¨ÁË¼àÌıµÄhostºÍ¶Ë¿Ú
+    ///////////////////å¯¹pointStreamçš„æ“ä½œï¼ŒæŒç»­è‡ªæ‰§è¡Œæµç¨‹åºæ®µï¼Œæ—¶é—´é—´éš”ä¸º2s start////////////////////////////////
 
-    ///////////////////¶ÔpointStreamµÄ²Ù×÷£¬³ÖĞø×ÔÖ´ĞĞÁ÷³ÌĞò¶Î£¬Ê±¼ä¼ä¸ôÎª2s start////////////////////////////////
-
-    val step1 = pointStream.map(s => s.split(",")) // [String] => [Array[String]] ³¤´®×ªĞ¡´®Êı×é
+    val step1 = pointStream.map(s => s.split(",")) // [String] => [Array[String]] é•¿ä¸²è½¬å°ä¸²æ•°ç»„
 /*
-    step1.foreachRDD(rdd => // DstreamÖĞµÄÃ¿Ò»¸öRDD
-      rdd.foreachPartition { partition =>  // RDDÖĞµÄÃ¿Ò»¸öpartition
-        partition.foreach { item => // partitionÖĞµÄÃ¿Ò»¸öÔªËØ
+    step1.foreachRDD(rdd => // Dstreamä¸­çš„æ¯ä¸€ä¸ªRDD
+      rdd.foreachPartition { partition =>  // RDDä¸­çš„æ¯ä¸€ä¸ªpartition
+        partition.foreach { item => // partitionä¸­çš„æ¯ä¸€ä¸ªå…ƒç´ 
           item.foreach(println)
         }
       }
     )
  */
 
-    val ft = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss") //Date×ª»»Æ÷,ÓÃÓÚString -> Date
+    val ft = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss") //Dateè½¬æ¢å™¨,ç”¨äºString -> Date
 
-    //val ft_bro = sc.broadcast(ft) // ¹ã²¥×ª»»Æ÷
+    //val ft_bro = sc.broadcast(ft) // å¹¿æ’­è½¬æ¢å™¨
 
     val step2 = step1.map(
         fields =>
@@ -81,9 +72,9 @@ object Matching {
 
       val step3 = step2.groupByKey().mapValues(f => f.toArray) // <id,CarPoint> => <id,Array[CarPoint]>
 
-    step3.foreachRDD(rdd => // DstreamÖĞµÄÃ¿Ò»¸öRDD
-      rdd.foreachPartition { partition =>  // RDDÖĞµÄÃ¿Ò»¸öpartition
-        partition.foreach { item => // partitionÖĞµÄÃ¿Ò»¸öÔªËØ
+    step3.foreachRDD(rdd => // Dstreamä¸­çš„æ¯ä¸€ä¸ªRDD
+      rdd.foreachPartition { partition =>  // RDDä¸­çš„æ¯ä¸€ä¸ªpartition
+        partition.foreach { item => // partitionä¸­çš„æ¯ä¸€ä¸ªå…ƒç´ 
           //val rowkey = item._1
           for(point <- item._2 )
           {
@@ -99,41 +90,40 @@ object Matching {
       }
     )
 
-    /*
-
-      // CarPoint¶ÔÏó±È½ÏÆ÷
-      def sortRule(carPoint: CarPoint ): Long = carPoint.timestamp.getTime() // ·µ»Ø×Ô´ÓGMT 1970-01-01 00:00:00µ½´Ëdate¶ÔÏóµÄ"¾àÀë",µ¥Î»:ms
+   
+      // CarPointå¯¹è±¡æ¯”è¾ƒå™¨
+      def sortRule(carPoint: CarPoint ): Long = carPoint.timestamp.getTime() // è¿”å›è‡ªä»GMT 1970-01-01 00:00:00åˆ°æ­¤dateå¯¹è±¡çš„"è·ç¦»",å•ä½:ms
 
       val step4 = step3.mapValues(f => f.sortBy(sortRule))  //  <id,(SortedCarPoints)>
 
       /*
-      ¹ØÓÚupdateStateByKeyÕâ¸öº¯Êı£¬ËüÄ¬ÈÏÓ¦ÓÃÓÚDStreamÖĞ°üº¬¶à¸öKeyÖµÏàÍ¬µÄ<K,V>µÄ³¡¾°
-      ÀıÈçwordCount£¬DStreamÖĞ¿ÉÄÜ°üº¬¶à¸ö<hello,1>
-      µ«ÔÚÕâÀï,ÓÉÓÚÖ®Ç°Ö´ĞĞÁËgroupByKey,ËùÒÔ²»´æÔÚKeyÖµÏàÍ¬µÄ <³µÅÆºÅ,Array[CarPoint]>
-      ÓÚÊÇ,¶ÔÓÚupdateFuncµÄµÚÒ»¸ö²ÎÊı:Ò»¸öSeq,Ö¸´úËùÓĞKeyÏàÍ¬µÄ<K,V>µÄvalues¾ÛºÏ³ÉµÄSeq
-      Õâ¸öSeqÖĞ±ØÈ»Ö»ÓĞ1¸öArray[CarPoint],ÒòÎª²»´æÔÚKeyÖµÏàÍ¬µÄ <³µÅÆºÅ,Array[CarPoint]>Âï
+      å…³äºupdateStateByKeyè¿™ä¸ªå‡½æ•°ï¼Œå®ƒé»˜è®¤åº”ç”¨äºDStreamä¸­åŒ…å«å¤šä¸ªKeyå€¼ç›¸åŒçš„<K,V>çš„åœºæ™¯
+      ä¾‹å¦‚wordCountï¼ŒDStreamä¸­å¯èƒ½åŒ…å«å¤šä¸ª<hello,1>
+      ä½†åœ¨è¿™é‡Œ,ç”±äºä¹‹å‰æ‰§è¡Œäº†groupByKey,æ‰€ä»¥ä¸å­˜åœ¨Keyå€¼ç›¸åŒçš„ <è½¦ç‰Œå·,Array[CarPoint]>
+      äºæ˜¯,å¯¹äºupdateFuncçš„ç¬¬ä¸€ä¸ªå‚æ•°:ä¸€ä¸ªSeq,æŒ‡ä»£æ‰€æœ‰Keyç›¸åŒçš„<K,V>çš„valuesèšåˆæˆçš„Seq
+      è¿™ä¸ªSeqä¸­å¿…ç„¶åªæœ‰1ä¸ªArray[CarPoint],å› ä¸ºä¸å­˜åœ¨Keyå€¼ç›¸åŒçš„ <è½¦ç‰Œå·,Array[CarPoint]>å˜›
        */
 
       //println(broadcast.value.getTreeLevel)
 
       val updateFunc = (values:Seq[Array[CarPoint]],state:Option[Array[MatchedPoint]]) =>
       {
-        val current = matchingEntranceForSpark(values.apply(0),range.toInt,tree) //¶Ô´ËÊ±µÄµã½øĞĞÆ¥Åä
+        val current = matchingEntranceForSpark(values.apply(0),range.toInt,tree) //å¯¹æ­¤æ—¶çš„ç‚¹è¿›è¡ŒåŒ¹é…
 
-        val previous = state.getOrElse(Array[MatchedPoint]()) // È¡ÀúÊ·×´Ì¬,
+        val previous = state.getOrElse(Array[MatchedPoint]()) // å–å†å²çŠ¶æ€,
 
-        // ·µ»Ø¸üĞÂºóµÄstate (Option,SomeÕâ¸öµãÓĞ´ı¸ã¶®)
-        Some(concat(previous,current)) //ºÏ²¢ËüÁ©£¬previousÔÚÇ°,currentÔÚºó
+        // è¿”å›æ›´æ–°åçš„state (Option,Someè¿™ä¸ªç‚¹æœ‰å¾…ææ‡‚)
+        Some(concat(previous,current)) //åˆå¹¶å®ƒä¿©ï¼Œpreviousåœ¨å‰,currentåœ¨å
       }
 
-      val step5 = step4.updateStateByKey[Array[MatchedPoint]](updateFunc)  // Ö´ĞĞÓĞ×´Ì¬¼ÆËã
+      val step5 = step4.updateStateByKey[Array[MatchedPoint]](updateFunc)  // æ‰§è¡Œæœ‰çŠ¶æ€è®¡ç®—
 
       //createOneCFTable(admin,"test","cf")
 
-      // ½«DStreamÖĞµÄÆ¥Åä½á¹ûĞ´µ½±¾µØÉÏÀ´
-      step5.foreachRDD(rdd => // DstreamÖĞµÄÃ¿Ò»¸öRDD
-        rdd.foreachPartition { partition =>  // RDDÖĞµÄÃ¿Ò»¸öpartition
-          partition.foreach { item => // partitionÖĞµÄÃ¿Ò»¸öÔªËØ
+      // å°†DStreamä¸­çš„åŒ¹é…ç»“æœå†™åˆ°æœ¬åœ°ä¸Šæ¥
+      step5.foreachRDD(rdd => // Dstreamä¸­çš„æ¯ä¸€ä¸ªRDD
+        rdd.foreachPartition { partition =>  // RDDä¸­çš„æ¯ä¸€ä¸ªpartition
+          partition.foreach { item => // partitionä¸­çš„æ¯ä¸€ä¸ªå…ƒç´ 
             //val rowkey = item._1
             for(point <- item._2 )
             {
@@ -149,44 +139,42 @@ object Matching {
         }
       )
 
-      //step5.print() // Êä³ö½á¹û,»¹²»ÖªµÀĞ§¹ûÔõÃ´Ñù£¬Èç¹û²»ĞĞÄÇ¾ÍºóÃæÔÙ»»
+      //step5.print() // è¾“å‡ºç»“æœ,è¿˜ä¸çŸ¥é“æ•ˆæœæ€ä¹ˆæ ·ï¼Œå¦‚æœä¸è¡Œé‚£å°±åé¢å†æ¢
 
-     */
+    ///////////////////////////è‡ªå¾ªç¯æµç¨‹åºæ®µ end//////////////////////////////////////////////////////////////////
 
-    ///////////////////////////×ÔÑ­»·Á÷³ÌĞò¶Î end//////////////////////////////////////////////////////////////////
+    ssc.start() // æ°´é—¸é€šç”µ
 
-    ssc.start() // Ë®Õ¢Í¨µç
-
-    ssc.awaitTermination()  // µÈ´ıË®Õ¢¶Ïµç
+    ssc.awaitTermination()  // ç­‰å¾…æ°´é—¸æ–­ç”µ
   }
 
   /**
-   * °æ±¾2 ½ö½ö±£ÁôºËĞÄµÄrdd×ª»»Á÷³Ì,½«ÆäËû¹¤×÷·Öµ£¸øÁËÖ÷º¯Êı:¹ã²¥2D-RTree,»ñÈ¡taxi_rdd1.±È°æ±¾1¸üÁé»î£¬ÒòÎª½â·ÅÁËtaxi_rdd1µÄ»ñÈ¡·½Ê½
-   * @param taxi_rdd1 Õâ¸öRDDÖĞµÄÔªËØĞèÒªÔ¤´¦Àí³ÉÒ»¸ö¸öString:"id,longitude,latitude,time(yyyy-MM-dd hh:mm:ss),rate"
-   * @param broadcast 2D-RTreeµÄ¹ã²¥±äÁ¿
-   * @param range ×¥Â··¶Î§
+   * ç‰ˆæœ¬2 ä»…ä»…ä¿ç•™æ ¸å¿ƒçš„rddè½¬æ¢æµç¨‹,å°†å…¶ä»–å·¥ä½œåˆ†æ‹…ç»™äº†ä¸»å‡½æ•°:å¹¿æ’­2D-RTree,è·å–taxi_rdd1.æ¯”ç‰ˆæœ¬1æ›´çµæ´»ï¼Œå› ä¸ºè§£æ”¾äº†taxi_rdd1çš„è·å–æ–¹å¼
+   * @param taxi_rdd1 è¿™ä¸ªRDDä¸­çš„å…ƒç´ éœ€è¦é¢„å¤„ç†æˆä¸€ä¸ªä¸ªString:"id,longitude,latitude,time(yyyy-MM-dd hh:mm:ss),rate"
+   * @param broadcast 2D-RTreeçš„å¹¿æ’­å˜é‡
+   * @param range æŠ“è·¯èŒƒå›´
    * @return
    */
   def matchingOnSpark(taxi_rdd1:RDD[String], broadcast: Broadcast[RTree], range:Double):RDD[(String,Array[MatchedPoint])] =
   {
-    val taxi_rdd2 = taxi_rdd1.map(_.split(",")) // rddÔªËØ:Array[String],½«Ò»ĞĞ°´¶ººÅ²ğ·Ö³öµÄ×Ö·û´®Êı×é
+    val taxi_rdd2 = taxi_rdd1.map(_.split(",")) // rddå…ƒç´ :Array[String],å°†ä¸€è¡ŒæŒ‰é€—å·æ‹†åˆ†å‡ºçš„å­—ç¬¦ä¸²æ•°ç»„
 
-    val ft = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss") //Date×ª»»Æ÷
+    val ft = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss") //Dateè½¬æ¢å™¨
 
     val taxi_rdd3 = taxi_rdd2.map(
       fields => (fields(0),new CarPoint(fields(0),fields(1).trim.toDouble,fields(2).trim.toDouble,ft.parse(fields(3)),fields(4).trim.toDouble))
-    ) // rddÔªËØ:<³µÅÆºÅ,CarPoint(°üº¬5¸öÊôĞÔ)> ÆäÊµÔÚÕâ¸ö°æ±¾µÄMap-MatchingÖĞ²»»á¿¼ÂÇ³µËÙ,ËùÒÔfields(4)ÆäÊµ¾ÍÃ»ÓÃµ½
+    ) // rddå…ƒç´ :<è½¦ç‰Œå·,CarPoint(åŒ…å«5ä¸ªå±æ€§)> å…¶å®åœ¨è¿™ä¸ªç‰ˆæœ¬çš„Map-Matchingä¸­ä¸ä¼šè€ƒè™‘è½¦é€Ÿ,æ‰€ä»¥fields(4)å…¶å®å°±æ²¡ç”¨åˆ°
 
-    val taxi_rdd4 = taxi_rdd3.groupByKey() // rddÔªËØ:<³µÅÆºÅ,Iterable<ÎŞĞòµÄCarPoint>>
+    val taxi_rdd4 = taxi_rdd3.groupByKey() // rddå…ƒç´ :<è½¦ç‰Œå·,Iterable<æ— åºçš„CarPoint>>
 
-    // CarPoint¶ÔÏó±È½ÏÆ÷
-    def sortRule(carPoint: CarPoint ): Long = carPoint.timestamp.getTime() // ·µ»Ø×Ô´ÓGMT 1970-01-01 00:00:00µ½´Ëdate¶ÔÏóµÄ"¾àÀë",µ¥Î»:ms
+    // CarPointå¯¹è±¡æ¯”è¾ƒå™¨
+    def sortRule(carPoint: CarPoint ): Long = carPoint.timestamp.getTime() // è¿”å›è‡ªä»GMT 1970-01-01 00:00:00åˆ°æ­¤dateå¯¹è±¡çš„"è·ç¦»",å•ä½:ms
 
-    val taxi_rdd5 = taxi_rdd4.mapValues(f => f.toArray.sortBy(sortRule)) // rddÔªËØ:<³µÅÆºÅ,Array<ÓĞĞòµÄCarPoint>>
+    val taxi_rdd5 = taxi_rdd4.mapValues(f => f.toArray.sortBy(sortRule)) // rddå…ƒç´ :<è½¦ç‰Œå·,Array<æœ‰åºçš„CarPoint>>
 
-    val tree_regenerate = broadcast.value // »ñÈ¡¹ã²¥Ö®ºóµÄÔÙÉúÊ÷
+    val tree_regenerate = broadcast.value // è·å–å¹¿æ’­ä¹‹åçš„å†ç”Ÿæ ‘
 
-    taxi_rdd5.mapValues(f => matchingEntranceForSpark(f,range,tree_regenerate)) //Æ¥Åä½á¹û:Ò»¸öRDD,ÔªËØÊÇ<³µÅÆºÅ,Æ¥ÅäºóµÄ³µÁ¾¹ì¼£>
+    taxi_rdd5.mapValues(f => matchingEntranceForSpark(f,range,tree_regenerate)) //åŒ¹é…ç»“æœ:ä¸€ä¸ªRDD,å…ƒç´ æ˜¯<è½¦ç‰Œå·,åŒ¹é…åçš„è½¦è¾†è½¨è¿¹>
   }
 
 }
