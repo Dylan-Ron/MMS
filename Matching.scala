@@ -9,8 +9,12 @@ import org.apache.spark.streaming._
 import org.apache.spark.{SparkConf, SparkContext}
 import rtree.RTree
 import mapmatching.Entrance.matchingEntranceForSpark
-import calculator.Calculator.zoneToLocalTime
 import org.apache.htrace.fasterxml.jackson.databind.deser.std.StringDeserializer
+import org.apache.spark.streaming.kafka010._
+import org.apache.spark.streaming.kafka010.{KafkaUtils, LocationStrategies}
+import org.apache.spark.streaming.kafka010.ConsumerStrategies.Subscribe
+import org.apache.spark.streaming.kafka010.KafkaUtils.createDirectStream
+import org.apache.kafka
 
 import scala.Array._
 
@@ -20,15 +24,17 @@ object Matching {
   {
     // 基本假设:GPS轨迹点以时间顺序流出
 
+    println("just read one topic")
+
     if(args.length != 7)
     {
-      System.err.println("Parameters:sparkMaster,checkpoint,roadNet,range,host,port,outputPath")
+      System.err.println("Parameters:sparkMaster,checkpoint,roadNet,range,broker&port,topic,outputPath")
       //System.err.println("Parameters:<sparkMaster> <checkpoint_dir> <roadNet> <range> <zkQuorum> & ")
       //System.err.println("<topic-group> <topics> <partition_num> <OutputPath>")
       System.exit(1)
     }
 
-    val Array(sparkMaster,checkpoint,roadNet,range,host,port,outputPath) = args
+    val Array(sparkMaster,checkpoint,roadNet,range,broker,topic,outputPath) = args
 
     val conf = new SparkConf().setAppName("MM on Stream").setMaster(sparkMaster).set("spark.driver.allowMultipleContexts","true")
 
@@ -46,11 +52,34 @@ object Matching {
 
     ssc.checkpoint(checkpoint)  // 创建检查点，不然updateStateByKey的历史状态存储在哪呢？
 
-    val pointStream = ssc.socketTextStream(host,port.toInt) //pointStream是泉眼,指定了监听的host和端口
+    val perferredHosts = LocationStrategies.PreferConsistent // 制定Kafka Location Strategy
+
+    val kafkaParams = Map[String,Object](   // 老的consumer由zookeeper管理，新的consumer由Kafka管理，这里我要作为新的consumer连接kafka
+      "bootstrap.servers" -> broker, //由于是写的新的consumer，这里指定的就是bootstrap.server.这个参数指定kafka broker的位置
+      "key.deserializer" -> classOf[StringDeserializer],
+      "value.deserializer" -> classOf[StringDeserializer],
+      "auto.offset.reset" -> "latest",
+      "enable.auto.commit" -> (false: java.lang.Boolean),
+      "group.id" -> "1" // 指定consumer的group id,同组的consumer共享同一个Message offset
+    )
+
+    val topics = Set(topic)
+
+    val messageStream = KafkaUtils.createDirectStream[String, String](
+      ssc,
+      perferredHosts,
+      Subscribe[String, String](topics, kafkaParams)  // 这第三个参数是ConsumerStrategy
+    )
+
+    //流创建的参考链接 https://www.cnblogs.com/tlnshuju/p/9898704.html
+
+    val begin = messageStream.map(s => s.asInstanceOf[String])
+
+    //val pointStream = ssc.socketTextStream(host,port.toInt) //pointStream是泉眼,指定了监听的host和端口
 
     ///////////////////对pointStream的操作，持续自执行流程序段，时间间隔为2s start////////////////////////////////
 
-    val step1 = pointStream.map(s => s.split(",")) // [String] => [Array[String]] 长串转小串数组
+    val step1 = begin.map(s => s.split(",")) // [String] => [Array[String]] 长串转小串数组
 /*
     step1.foreachRDD(rdd => // Dstream中的每一个RDD
       rdd.foreachPartition { partition =>  // RDD中的每一个partition
@@ -72,7 +101,7 @@ object Matching {
 
       val step3 = step2.groupByKey().mapValues(f => f.toArray) // <id,CarPoint> => <id,Array[CarPoint]>
 
-    step3.foreachRDD(rdd => // Dstream中的每一个RDD
+    /*step3.foreachRDD(rdd => // Dstream中的每一个RDD
       rdd.foreachPartition { partition =>  // RDD中的每一个partition
         partition.foreach { item => // partition中的每一个元素
           //val rowkey = item._1
@@ -88,9 +117,10 @@ object Matching {
           }
         }
       }
-    )
+    )*/
 
-   
+
+
       // CarPoint对象比较器
       def sortRule(carPoint: CarPoint ): Long = carPoint.timestamp.getTime() // 返回自从GMT 1970-01-01 00:00:00到此date对象的"距离",单位:ms
 
@@ -140,6 +170,8 @@ object Matching {
       )
 
       //step5.print() // 输出结果,还不知道效果怎么样，如果不行那就后面再换
+
+
 
     ///////////////////////////自循环流程序段 end//////////////////////////////////////////////////////////////////
 
